@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import requests
+from datetime import datetime
 
 st.set_page_config(page_title="카카오 캠페인 대시보드", layout="wide", page_icon="💛")
 
@@ -25,14 +27,15 @@ st.markdown("""
     height: 110px;
   }
   .kpi-label {
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 1.6px; text-transform: uppercase;
-    color: #4B5E85; margin-bottom: 10px;
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 1.4px; text-transform: uppercase;
+    color: #8BA3CC; margin-bottom: 10px;
   }
   .kpi-value        { font-size: 26px; font-weight: 800; color: #FFE000; }
   .kpi-value-green  { font-size: 26px; font-weight: 800; color: #34D399; }
   .kpi-value-orange { font-size: 26px; font-weight: 800; color: #FB923C; }
   .kpi-value-purple { font-size: 26px; font-weight: 800; color: #A78BFA; }
+  .kpi-value-blue   { font-size: 26px; font-weight: 800; color: #60A5FA; }
 
   .sec-wrap  { display:flex; align-items:center; gap:12px; margin:32px 0 14px; }
   .sec-label { font-size:12px; font-weight:700; letter-spacing:2px;
@@ -47,7 +50,7 @@ st.markdown("""
     padding: 18px 16px 6px;
   }
   .chart-title {
-    font-size:13px; font-weight:700; color:#94A8CC;
+    font-size:14px; font-weight:700; color:#C4D4EE;
     letter-spacing:.5px; margin-bottom:4px;
   }
 
@@ -61,7 +64,7 @@ st.markdown("""
     background: linear-gradient(90deg, #FFE000 0%, #34D399 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
   }
-  .report-sub { font-size: 13px; color: #374869; margin-top: 4px; }
+  .report-sub { font-size: 13px; color: #5B6E92; margin-top: 4px; }
 
   .upload-box {
     background: #10162A;
@@ -71,6 +74,23 @@ st.markdown("""
     text-align: center;
   }
 
+  .weather-card {
+    background: linear-gradient(145deg, #0D1525, #131D38);
+    border: 1px solid rgba(96,165,250,.25);
+    border-radius: 18px;
+    padding: 20px 24px 16px;
+  }
+  .weather-temp {
+    font-size: 40px; font-weight: 900; color: #60A5FA; line-height: 1.1;
+  }
+  .weather-label {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.4px;
+    text-transform: uppercase; color: #8BA3CC; margin-bottom: 8px;
+  }
+  .weather-sub {
+    font-size: 13px; color: #6B83A8; margin-top: 6px;
+  }
+
   [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
   [data-testid="stFileUploader"] { background: #10162A !important; border-radius: 10px; }
 </style>
@@ -78,7 +98,7 @@ st.markdown("""
 
 PLOT_BG    = "#10162A"
 GRID_COLOR = "#1A2D50"
-FONT_COLOR = "#8BA3CC"
+FONT_COLOR = "#A8BDD8"
 KAKAO_COLORS = ["#FFE000", "#34D399", "#FB923C", "#A78BFA", "#F472B6", "#60A5FA"]
 
 LAYOUT_BASE = dict(
@@ -105,6 +125,21 @@ def kpi(col, label, value, cls="kpi-value"):
     </div>""", unsafe_allow_html=True)
 
 
+def wrap_label(text, max_chars=8):
+    """긴 레이블을 max_chars 기준으로 2줄로 분할 (plotly HTML 사용)."""
+    if len(text) <= max_chars:
+        return text
+    mid = len(text) // 2
+    # 공백이 있으면 공백 기준으로 분할
+    for i in range(mid, len(text)):
+        if text[i] == ' ':
+            return text[:i] + '<br>' + text[i+1:]
+    for i in range(mid, -1, -1):
+        if text[i] == ' ':
+            return text[:i] + '<br>' + text[i+1:]
+    return text[:mid] + '<br>' + text[mid:]
+
+
 # ── 헤더 ─────────────────────────────────────────────────────────────────────
 st.markdown("""
 <div class="report-header">
@@ -112,6 +147,83 @@ st.markdown("""
   <div class="report-sub">고객정보 × 캠페인반응 데이터 통합 분석</div>
 </div>
 """, unsafe_allow_html=True)
+
+# ── 날씨 섹션 ─────────────────────────────────────────────────────────────────
+section("서울 날씨 (실시간)")
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_weather():
+    url = (
+        "https://api.open-meteo.com/v1/forecast"
+        "?latitude=37.5665&longitude=126.9780"
+        "&current=temperature_2m,apparent_temperature,weathercode"
+        "&hourly=temperature_2m"
+        "&timezone=Asia%2FSeoul"
+        "&forecast_days=1"
+    )
+    resp = requests.get(url, timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+try:
+    weather = fetch_weather()
+    cur = weather["current"]
+    cur_temp   = cur["temperature_2m"]
+    feel_temp  = cur["apparent_temperature"]
+
+    # 오늘 시간별 기온 (0~23시)
+    hours   = weather["hourly"]["time"]        # ISO 형식
+    h_temps = weather["hourly"]["temperature_2m"]
+    now_hour = datetime.now().hour
+    hour_labels = [h.split("T")[1][:5] for h in hours]  # "HH:MM"
+
+    wc1, wc2, wc3 = st.columns([1, 1, 3])
+
+    with wc1:
+        st.markdown(f"""
+        <div class="weather-card">
+          <div class="weather-label">현재 기온</div>
+          <div class="weather-temp">{cur_temp:.1f}°C</div>
+          <div class="weather-sub">서울특별시 기준</div>
+        </div>""", unsafe_allow_html=True)
+
+    with wc2:
+        st.markdown(f"""
+        <div class="weather-card">
+          <div class="weather-label">체감 기온</div>
+          <div class="weather-temp" style="color:#34D399">{feel_temp:.1f}°C</div>
+          <div class="weather-sub">Open-Meteo 제공</div>
+        </div>""", unsafe_allow_html=True)
+
+    with wc3:
+        st.markdown('<div class="chart-card"><div class="chart-title">오늘 시간별 기온 (°C)</div>', unsafe_allow_html=True)
+        df_w = pd.DataFrame({"시간": hour_labels, "기온(°C)": h_temps})
+        fig_w = go.Figure()
+        fig_w.add_trace(go.Scatter(
+            x=df_w["시간"], y=df_w["기온(°C)"],
+            mode="lines+markers",
+            line=dict(color="#60A5FA", width=2.5),
+            marker=dict(size=5, color="#60A5FA"),
+            fill="tozeroy",
+            fillcolor="rgba(96,165,250,0.08)",
+        ))
+        # 현재 시간 강조
+        fig_w.add_vline(
+            x=hour_labels[now_hour],
+            line_dash="dot", line_color="#FFE000", line_width=1.5,
+            annotation_text="현재", annotation_font_color="#FFE000",
+            annotation_font_size=11,
+        )
+        fig_w.update_layout(
+            **LAYOUT_BASE, height=160,
+            xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0, tickfont_size=11),
+            yaxis=dict(gridcolor=GRID_COLOR, title="°C", tickfont_size=11),
+        )
+        st.plotly_chart(fig_w, use_container_width=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+except Exception as e:
+    st.warning(f"날씨 데이터를 불러오지 못했습니다. ({e})")
 
 # ── 파일 업로드 ───────────────────────────────────────────────────────────────
 col_up1, col_up2 = st.columns(2)
@@ -194,16 +306,19 @@ with ch1:
         .reset_index()
     )
     camp_df["전환율"] = (camp_df["전환율"] * 100).round(1)
+    camp_df["캠페인명_표시"] = camp_df["캠페인명"].apply(wrap_label)
     fig = px.bar(
-        camp_df, x="캠페인명", y="전환율",
+        camp_df, x="캠페인명_표시", y="전환율",
         color="전환율", color_continuous_scale=["#1A2D50", "#FFE000"],
         text="전환율",
     )
     fig.update_traces(texttemplate="%{text:.1f}%", textposition="outside", marker_line_width=0)
-    fig.update_layout(**LAYOUT_BASE, height=300,
+    fig.update_layout(**LAYOUT_BASE, height=320,
                       coloraxis_showscale=False, showlegend=False,
-                      xaxis=dict(gridcolor=GRID_COLOR, title=""),
-                      yaxis=dict(gridcolor=GRID_COLOR, title="전환율 (%)"))
+                      xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0,
+                                 tickfont=dict(size=12, color="#C4D4EE")),
+                      yaxis=dict(gridcolor=GRID_COLOR, title="전환율 (%)",
+                                 tickfont=dict(size=12)))
     st.plotly_chart(fig, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -214,10 +329,12 @@ with ch2:
         ch_action, x="발송채널", y="건수", color="최종행동",
         color_discrete_sequence=KAKAO_COLORS, barmode="stack",
     )
-    fig2.update_layout(**LAYOUT_BASE, height=300,
-                       xaxis=dict(gridcolor=GRID_COLOR, title=""),
-                       yaxis=dict(gridcolor=GRID_COLOR, title="건수"),
-                       legend=dict(bgcolor="rgba(0,0,0,0)", font_size=11))
+    fig2.update_layout(**LAYOUT_BASE, height=320,
+                       xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0,
+                                  tickfont=dict(size=12, color="#C4D4EE")),
+                       yaxis=dict(gridcolor=GRID_COLOR, title="건수",
+                                  tickfont=dict(size=12)),
+                       legend=dict(bgcolor="rgba(0,0,0,0)", font_size=12))
     st.plotly_chart(fig2, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -239,9 +356,11 @@ with ch3:
         text="전환율",
     )
     fig3.update_traces(texttemplate="%{text:.1f}%", textposition="outside", marker_line_width=0)
-    fig3.update_layout(**LAYOUT_BASE, height=260, showlegend=False,
-                       xaxis=dict(gridcolor=GRID_COLOR, title=""),
-                       yaxis=dict(gridcolor=GRID_COLOR, title="전환율 (%)"))
+    fig3.update_layout(**LAYOUT_BASE, height=280, showlegend=False,
+                       xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0,
+                                  tickfont=dict(size=12, color="#C4D4EE")),
+                       yaxis=dict(gridcolor=GRID_COLOR, title="전환율 (%)",
+                                  tickfont=dict(size=12)))
     st.plotly_chart(fig3, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -254,10 +373,12 @@ with ch4:
         color_discrete_sequence=KAKAO_COLORS, barmode="group",
         category_orders={"연령대": order},
     )
-    fig4.update_layout(**LAYOUT_BASE, height=260,
-                       xaxis=dict(gridcolor=GRID_COLOR, title=""),
-                       yaxis=dict(gridcolor=GRID_COLOR, title="건수"),
-                       legend=dict(bgcolor="rgba(0,0,0,0)", font_size=10))
+    fig4.update_layout(**LAYOUT_BASE, height=280,
+                       xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0,
+                                  tickfont=dict(size=12, color="#C4D4EE")),
+                       yaxis=dict(gridcolor=GRID_COLOR, title="건수",
+                                  tickfont=dict(size=12)),
+                       legend=dict(bgcolor="rgba(0,0,0,0)", font_size=11))
     st.plotly_chart(fig4, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -269,10 +390,11 @@ with ch5:
         action_cnt, values="건수", names="최종행동",
         color_discrete_sequence=KAKAO_COLORS, hole=0.55,
     )
-    fig5.update_traces(textposition="inside", textinfo="percent+label", textfont_size=11)
+    fig5.update_traces(textposition="inside", textinfo="percent+label",
+                       textfont_size=12, textfont_color="#FFFFFF")
     fig5.update_layout(
         paper_bgcolor="rgba(0,0,0,0)", font_color=FONT_COLOR,
-        margin=dict(l=0, r=0, t=20, b=0), height=260,
+        margin=dict(l=0, r=0, t=20, b=0), height=280,
         showlegend=False,
     )
     st.plotly_chart(fig5, use_container_width=True)
@@ -297,9 +419,11 @@ with ch6:
         text="구매금액",
     )
     fig6.update_traces(texttemplate="₩%{text:,.0f}", textposition="outside", marker_line_width=0)
-    fig6.update_layout(**LAYOUT_BASE, height=280, showlegend=False,
-                       xaxis=dict(gridcolor=GRID_COLOR, title=""),
-                       yaxis=dict(gridcolor=GRID_COLOR, title="평균 구매금액 (원)"))
+    fig6.update_layout(**LAYOUT_BASE, height=300, showlegend=False,
+                       xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0,
+                                  tickfont=dict(size=13, color="#C4D4EE")),
+                       yaxis=dict(gridcolor=GRID_COLOR, title="평균 구매금액 (원)",
+                                  tickfont=dict(size=12)))
     st.plotly_chart(fig6, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -317,9 +441,10 @@ with ch7:
         text="구매금액",
     )
     fig7.update_traces(texttemplate="₩%{text:,.0f}", textposition="outside", marker_line_width=0)
-    fig7.update_layout(**LAYOUT_BASE, height=280, coloraxis_showscale=False,
-                       xaxis=dict(gridcolor=GRID_COLOR, title=""),
-                       yaxis=dict(gridcolor=GRID_COLOR, title=""))
+    fig7.update_layout(**LAYOUT_BASE, height=300, coloraxis_showscale=False,
+                       xaxis=dict(gridcolor=GRID_COLOR, title="", tickfont=dict(size=12)),
+                       yaxis=dict(gridcolor=GRID_COLOR, title="",
+                                  tickfont=dict(size=13, color="#C4D4EE")))
     st.plotly_chart(fig7, use_container_width=True)
     st.markdown('</div>', unsafe_allow_html=True)
 
