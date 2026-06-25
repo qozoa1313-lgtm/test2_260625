@@ -206,14 +206,19 @@ try:
             marker=dict(size=5, color="#60A5FA"),
             fill="tozeroy",
             fillcolor="rgba(96,165,250,0.08)",
+            showlegend=False,
         ))
-        # 현재 시간 강조
-        fig_w.add_vline(
-            x=hour_labels[now_hour],
-            line_dash="dot", line_color="#FFE000", line_width=1.5,
-            annotation_text="현재", annotation_font_color="#FFE000",
-            annotation_font_size=11,
-        )
+        # 현재 시간 강조 — add_vline은 문자열 x축에서 오류 발생하므로 마커로 대체
+        fig_w.add_trace(go.Scatter(
+            x=[hour_labels[now_hour]],
+            y=[h_temps[now_hour]],
+            mode="markers+text",
+            marker=dict(size=12, color="#FFE000", symbol="circle"),
+            text=["현재"],
+            textposition="top center",
+            textfont=dict(color="#FFE000", size=11),
+            showlegend=False,
+        ))
         fig_w.update_layout(
             **LAYOUT_BASE, height=160,
             xaxis=dict(gridcolor=GRID_COLOR, title="", tickangle=0, tickfont_size=11),
