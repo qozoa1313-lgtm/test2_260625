@@ -4,6 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import requests
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title="카카오 캠페인 대시보드", layout="wide", page_icon="💛")
 
@@ -174,7 +175,7 @@ try:
     # 오늘 시간별 기온 (0~23시)
     hours   = weather["hourly"]["time"]        # ISO 형식
     h_temps = weather["hourly"]["temperature_2m"]
-    now_hour = datetime.now().hour
+    now_hour = datetime.now(ZoneInfo("Asia/Seoul")).hour
     hour_labels = [h.split("T")[1][:5] for h in hours]  # "HH:MM"
 
     wc1, wc2, wc3 = st.columns([1, 1, 3])
